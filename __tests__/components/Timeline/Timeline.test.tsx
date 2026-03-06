@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
 import dayjs from "dayjs";
 import Timeline from "lib/Timeline";
 import type { ReactCalendarTimelineProps } from "lib/Timeline";
@@ -168,6 +168,64 @@ describe("Timeline", () => {
 
       const rowsHeight = Array.from(scrollRows).reduce((acc, row) => acc + parseFloat(row.style.height), 0);
       expect(parseFloat(scrollElement.style.height)).toBe(rowsHeight);
+    });
+
+    it("calls onCanvasClick when clicking an empty timeline row", () => {
+      const defaultTimeStart = dayjs("2018-01-01").valueOf();
+      const defaultTimeEnd = dayjs("2018-03-01").valueOf();
+      const onCanvasClick = vi.fn();
+
+      const props = {
+        ...defaultProps,
+        defaultTimeStart,
+        defaultTimeEnd,
+        groups: [
+          { id: 1, title: "Pinned Group" },
+          { id: 2, title: "Group 2" },
+        ],
+        pinnedGroups: [1],
+        onCanvasClick,
+      };
+
+      const { container } = render(<Timeline {...props} />);
+      const firstScrollRow = container.querySelector(
+        ".rct-horizontal-lines:not(.rct-pinned-horizontal-lines) > div"
+      ) as HTMLDivElement;
+
+      fireEvent.mouseDown(firstScrollRow, { clientX: 120 });
+      fireEvent.mouseUp(firstScrollRow, { clientX: 120 });
+      fireEvent.click(firstScrollRow, { clientX: 120 });
+
+      expect(onCanvasClick).toHaveBeenCalledTimes(1);
+      expect(onCanvasClick.mock.calls[0][0]).toBe(2);
+    });
+
+    it("calls onCanvasClick when clicking a pinned row", () => {
+      const defaultTimeStart = dayjs("2018-01-01").valueOf();
+      const defaultTimeEnd = dayjs("2018-03-01").valueOf();
+      const onCanvasClick = vi.fn();
+
+      const props = {
+        ...defaultProps,
+        defaultTimeStart,
+        defaultTimeEnd,
+        groups: [
+          { id: 1, title: "Pinned Group" },
+          { id: 2, title: "Group 2" },
+        ],
+        pinnedGroups: [1],
+        onCanvasClick,
+      };
+
+      const { container } = render(<Timeline {...props} />);
+      const pinnedRow = container.querySelector(".rct-pinned-horizontal-lines .rct-hl-pinned") as HTMLDivElement;
+
+      fireEvent.pointerDown(pinnedRow, { pointerId: 1, pointerType: "mouse", button: 0, clientX: 120 });
+      fireEvent.pointerUp(pinnedRow, { pointerId: 1, pointerType: "mouse", button: 0, clientX: 120 });
+      fireEvent.click(pinnedRow, { clientX: 120 });
+
+      expect(onCanvasClick).toHaveBeenCalledTimes(1);
+      expect(onCanvasClick.mock.calls[0][0]).toBe(1);
     });
   });
 });

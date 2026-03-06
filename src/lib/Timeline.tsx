@@ -4,6 +4,7 @@ import Items, { CanResize } from "./items/Items";
 import Sidebar from "./layout/Sidebar";
 import Columns from "./columns/Columns";
 import GroupRows, { RowClickEvent } from "./row/GroupRows";
+import GroupRow from "./row/GroupRow";
 import ScrollElement from "./scroll/ScrollElement";
 import MarkerCanvas from "./markers/MarkerCanvas";
 import windowResizeDetector from "../resize-detector/window";
@@ -565,9 +566,15 @@ export default class ReactCalendarTimeline<
     return Boolean(target.closest(".rct-item"));
   };
 
+  isPinnedRowTarget = (target: EventTarget | null): boolean => {
+    if (!(target instanceof Element)) return false;
+    return Boolean(target.closest(".rct-hl-pinned"));
+  };
+
   handlePinnedPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.pointerType !== "mouse" || e.button !== 0) return;
     if (this.isPinnedDragTargetItem(e.target)) return;
+    if (this.isPinnedRowTarget(e.target)) return;
     this.pinnedDragLastX = e.pageX;
     e.currentTarget.setPointerCapture?.(e.pointerId);
     e.preventDefault();
@@ -1335,17 +1342,33 @@ export default class ReactCalendarTimeline<
                         <MarkerCanvas>
                           {this.columns(canvasTimeStart, canvasTimeEnd, canvasWidth, minUnit, timeSteps, pinnedHeight)}
                           <div className="rct-horizontal-lines rct-pinned-horizontal-lines">
-                            {pinnedGroupsList.map((_, i) => (
-                              <div
-                                key={`p-row-${i}`}
-                                className={`rct-hl-pinned ${i % 2 === 0 ? "rct-hl-even" : "rct-hl-odd"}`}
-                                style={{
-                                  width: `${canvasWidth}px`,
-                                  height: `${pinnedGroupHeights[i]}px`,
-                                  top: `${pinnedGroupTops[i]}px`,
-                                }}
-                              />
-                            ))}
+                            {pinnedGroupsList.map((g, i) => {
+                              const globalIndex = groups.indexOf(g);
+                              const resolvedIndex = globalIndex === -1 ? i : globalIndex;
+
+                              return (
+                                <GroupRow
+                                  key={`p-row-${i}`}
+                                  clickTolerance={this.props.clickTolerance}
+                                  onContextMenu={(evt) => this.handleScrollContextMenu(evt, resolvedIndex)}
+                                  onClick={(evt) => this.handleRowClick(evt, resolvedIndex)}
+                                  onDoubleClick={(evt) => this.handleRowDoubleClick(evt, resolvedIndex)}
+                                  isEvenRow={i % 2 === 0}
+                                  group={g}
+                                  horizontalLineClassNamesForGroup={(group) => [
+                                    "rct-hl-pinned",
+                                    ...(this.props.horizontalLineClassNamesForGroup?.(group) ?? []),
+                                  ]}
+                                  style={{
+                                    width: `${canvasWidth}px`,
+                                    height: `${pinnedGroupHeights[i]}px`,
+                                    top: `${pinnedGroupTops[i]}px`,
+                                    left: "0px",
+                                    position: "absolute",
+                                  }}
+                                />
+                              );
+                            })}
                           </div>
                           {this.items({
                             canvasTimeStart,
@@ -1402,10 +1425,19 @@ export default class ReactCalendarTimeline<
                       {/* Only render scroll rows */}
                       <div className="rct-horizontal-lines">
                         {scrollGroupsList.map((_g, i) => {
+                          const globalIndex = groups.indexOf(_g);
+                          const resolvedIndex = globalIndex === -1 ? i : globalIndex;
+
                           return (
-                            <div
+                            <GroupRow
                               key={`s-row-${i}`}
-                              className={i % 2 === 0 ? "rct-hl-even" : "rct-hl-odd"}
+                              clickTolerance={this.props.clickTolerance}
+                              onContextMenu={(evt) => this.handleScrollContextMenu(evt, resolvedIndex)}
+                              onClick={(evt) => this.handleRowClick(evt, resolvedIndex)}
+                              onDoubleClick={(evt) => this.handleRowDoubleClick(evt, resolvedIndex)}
+                              isEvenRow={i % 2 === 0}
+                              group={_g}
+                              horizontalLineClassNamesForGroup={this.props.horizontalLineClassNamesForGroup}
                               style={{
                                 width: `${canvasWidth}px`,
                                 height: `${scrollGroupHeights[i]}px`,

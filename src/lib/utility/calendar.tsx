@@ -629,8 +629,12 @@ export function getItemDimensions<CustomItem extends TimelineItemBase<any>>({
     canvasWidth,
   });
   if (dimension) {
+    const order = groupOrders[_get(item, keys.itemGroupKey)];
+    // Item belongs to a group that is no longer in the visible groups list
+    // (e.g. collapsed/filtered out). Skip it to avoid undefined order crashes.
+    if (!order) return undefined;
     dimension.top = null;
-    dimension.order = groupOrders[_get(item, keys.itemGroupKey)];
+    dimension.order = order;
     dimension.stack = !item.isOverlay;
     dimension.height = (item.height || lineHeight) * (typeof itemVerticalGap === "undefined" ? itemHeightRatio : 1);
     return {
