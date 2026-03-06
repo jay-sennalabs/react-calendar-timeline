@@ -38,6 +38,7 @@ type ItemsProps<CustomItem extends TimelineItemBase<number>> = {
   useResizeHandle?: boolean;
   scrollRef: HTMLElement | null;
   scrollOffset: number;
+  calculateGroupOffset?: (e: React.MouseEvent, currentOrder: number) => number;
 };
 
 type ItemsState = object;
@@ -137,6 +138,7 @@ export default class Items<CustomItem extends TimelineItemBase<number>> extends 
               itemRenderer={this.props.itemRenderer}
               scrollRef={this.props.scrollRef}
               scrollOffset={this.props.scrollOffset}
+              calculateGroupOffset={this.props.calculateGroupOffset}
             />
           ))}
       </div>

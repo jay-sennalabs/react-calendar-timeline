@@ -128,6 +128,23 @@ export interface TimelineKeys {
 
 export type dateType = number; //| undefined;
 
+/**
+ * IDs of groups that should be pinned at the top.
+ * Accepted as a prop on ReactCalendarTimeline.
+ */
+export type PinnedGroupIds = (string | number)[];
+
+/**
+ * Data produced by the pinned layer stacking pass.
+ * Passed from Timeline.tsx into the pinned render layer.
+ */
+export interface PinnedLayerData {
+  pinnedGroups: TimelineGroupBase[];
+  pinnedGroupHeights: number[];
+  pinnedGroupTops: number[];
+  pinnedHeight: number;
+}
+
 export interface TimelineTimeSteps {
   second: number;
   minute: number;

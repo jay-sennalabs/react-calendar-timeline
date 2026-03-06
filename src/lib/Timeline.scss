@@ -26,7 +26,8 @@ $date-header-color: #fff !default;
 
   .rct-outer {
     display: block;
-    overflow: hidden;
+    overflow-x: clip;
+    overflow-y: visible;
     white-space: nowrap;
   }
 
@@ -155,9 +156,36 @@ $date-header-color: #fff !default;
     background: $sidebar-background-color;
     //color: #fff;
     border-bottom: 1px solid $border-color;
+
+    &.rct-sticky-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
   }
 
   .rct-calendar-header {
     border: 1px solid $border-color;
+  }
+
+  /* Pinned rows support */
+  .rct-pinned-layer {
+    box-shadow: 0 4px 6px -4px rgba(0, 0, 0, 0.2);
+  }
+
+  .rct-pinned-sidebar {
+    position: sticky;
+    left: 0;
+    z-index: 20;
+    background: var(--rct-color-background, #fff);
+  }
+
+  .rct-pinned-scroll {
+    overflow: hidden !important; /* Hide scrollbars, synced via Timeline */
+  }
+
+  .rct-hl-pinned {
+    position: absolute;
+    left: 0;
   }
 }

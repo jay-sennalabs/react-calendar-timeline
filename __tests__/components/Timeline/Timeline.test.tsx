@@ -62,5 +62,59 @@ describe("Timeline", () => {
       );
       vi.restoreAllMocks();
     });
+
+    it("includes pinned layer height in outer container height", () => {
+      const defaultTimeStart = dayjs("2018-01-01").valueOf();
+      const defaultTimeEnd = dayjs("2018-03-01").valueOf();
+
+      const props = {
+        ...defaultProps,
+        defaultTimeStart,
+        defaultTimeEnd,
+        groups: [
+          { id: 1, title: "Pinned Group" },
+          { id: 2, title: "Group 2" },
+          { id: 3, title: "Group 3" },
+        ],
+        pinnedGroups: [1],
+      };
+
+      const { container, getByTestId } = render(<Timeline {...props} />);
+
+      const outer = container.querySelector(".rct-outer") as HTMLDivElement;
+      const pinnedScroll = container.querySelector(".rct-pinned-scroll") as HTMLDivElement;
+      const scrollElement = getByTestId("scroll-element") as HTMLDivElement;
+
+      const outerHeight = parseFloat(outer.style.height);
+      const pinnedHeight = parseFloat(pinnedScroll.style.height);
+      const scrollHeight = parseFloat(scrollElement.style.height);
+
+      expect(outerHeight).toBe(scrollHeight + pinnedHeight);
+    });
+
+    it("puts overflowX:hidden on react-calendar-timeline wrapper (not .rct-outer) so sticky works inside a scroll container", () => {
+      const defaultTimeStart = dayjs("2018-01-01").valueOf();
+      const defaultTimeEnd = dayjs("2018-03-01").valueOf();
+
+      const props = {
+        ...defaultProps,
+        defaultTimeStart,
+        defaultTimeEnd,
+        groups: [
+          { id: 1, title: "Pinned Group" },
+          { id: 2, title: "Group 2" },
+        ],
+        pinnedGroups: [1],
+      };
+
+      const { container } = render(<Timeline {...props} />);
+      const wrapper = container.querySelector(".react-calendar-timeline") as HTMLDivElement;
+      const outer = container.querySelector(".rct-outer") as HTMLDivElement;
+
+      // overflowX:hidden must be on the outer wrapper, NOT on .rct-outer
+      // so that position:sticky on .rct-pinned-layer works against the real scroll container
+      expect(wrapper.style.overflowX).toBe("hidden");
+      expect(outer.style.overflowX).toBe("");
+    });
   });
 });

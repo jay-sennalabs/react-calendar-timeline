@@ -127,6 +127,15 @@ export type ReactCalendarTimelineProps<
   verticalLineClassNamesForTime?: (start: number, end: number) => string[];
   horizontalLineClassNamesForGroup?: ((group: CustomGroup) => string[]) | undefined;
   buffer?: number;
+  /**
+   * IDs of groups that should be pinned at the top.
+   */
+  pinnedGroups?: (string | number)[];
+  /**
+   * Whether to make the header sticky (stays visible when scrolling vertically).
+   * @default false
+   */
+  stickyHeader?: boolean;
   // Fields that are in propTypes but not documented
   headerRef?: (el: HTMLDivElement) => void;
   className?: string;
@@ -398,6 +407,13 @@ export default class ReactCalendarTimeline<
 
   scrollComponent: HTMLDivElement | null = null;
   scrollHeaderRef: HTMLDivElement | null = null;
+  pinnedLayerRef: HTMLDivElement | null = null;
+  pinnedDragLastX: number | null = null;
+
+  getHeaderHeight = (): number => {
+    if (!this.props.stickyHeader || !this.scrollHeaderRef) return 0;
+    return this.scrollHeaderRef.parentElement?.offsetHeight || 0;
+  };
 
   getScrollOffset = () => {
     const { width, visibleTimeStart, canvasTimeStart, visibleTimeEnd } = this.state;
@@ -501,6 +517,81 @@ export default class ReactCalendarTimeline<
   handleWheelZoom = (speed: number, xPosition: number, deltaY: number) => {
     const scale = deltaY > 0 ? 1.0 + (speed * deltaY) / 500 : 1.0 / (1.0 + (speed * deltaY * -1) / 500);
     this.changeZoom(scale, xPosition / this.state.width);
+  };
+
+  normalizeWheelDelta = (e: WheelEvent): number => {
+    let delta = e.deltaY || e.deltaX;
+
+    if (e.deltaMode === 1) {
+      delta *= 15;
+    } else if (e.deltaMode === 2) {
+      delta *= 800;
+    }
+
+    const MAX_DELTA = 120;
+    return Math.max(-MAX_DELTA, Math.min(MAX_DELTA, delta));
+  };
+
+  handlePinnedLayerWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (!this.scrollComponent) return;
+    const nativeEvent = e.nativeEvent;
+
+    if (nativeEvent.ctrlKey || nativeEvent.metaKey || nativeEvent.altKey) {
+      e.preventDefault();
+      const scrollRect = this.scrollComponent.getBoundingClientRect();
+      const xPosition = nativeEvent.clientX - scrollRect.left;
+      const speed = nativeEvent.ctrlKey ? 10 : nativeEvent.metaKey ? 3 : 1;
+      const normalizedDelta = this.normalizeWheelDelta(nativeEvent);
+      this.handleWheelZoom(speed, xPosition, normalizedDelta);
+      return;
+    }
+
+    if (nativeEvent.shiftKey) {
+      e.preventDefault();
+      const normalizedDelta = this.normalizeWheelDelta(nativeEvent);
+      this.onScroll(this.getScrollOffset() + normalizedDelta);
+      return;
+    }
+
+    const deltaX = nativeEvent.deltaX;
+    if (deltaX !== 0 && Math.abs(deltaX) > Math.abs(nativeEvent.deltaY)) {
+      e.preventDefault();
+      this.onScroll(this.getScrollOffset() + deltaX);
+    }
+  };
+
+  isPinnedDragTargetItem = (target: EventTarget | null): boolean => {
+    if (!(target instanceof Element)) return false;
+    return Boolean(target.closest(".rct-item"));
+  };
+
+  handlePinnedPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== "mouse" || e.button !== 0) return;
+    if (this.isPinnedDragTargetItem(e.target)) return;
+    this.pinnedDragLastX = e.pageX;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    e.preventDefault();
+  };
+
+  handlePinnedPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== "mouse" || this.pinnedDragLastX === null) return;
+    const deltaX = this.pinnedDragLastX - e.pageX;
+    if (deltaX !== 0) {
+      this.onScroll(this.getScrollOffset() + deltaX);
+      this.pinnedDragLastX = e.pageX;
+      e.preventDefault();
+    }
+  };
+
+  handlePinnedPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    this.pinnedDragLastX = null;
+    if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+  };
+
+  handlePinnedPointerLeave = () => {
+    this.pinnedDragLastX = null;
   };
 
   changeZoom = (scale: number, offset = 0.5) => {
@@ -767,6 +858,7 @@ export default class ReactCalendarTimeline<
     dimensionItems,
     groupTops,
     scrollOffset,
+    calculateGroupOffset,
   }: {
     canvasTimeStart: number;
     canvasTimeEnd: number;
@@ -774,6 +866,7 @@ export default class ReactCalendarTimeline<
     dimensionItems: ItemDimension[];
     groupTops: number[];
     scrollOffset: number;
+    calculateGroupOffset?: (e: React.MouseEvent, currentOrder: number) => number;
   }) {
     return (
       <Items
@@ -805,6 +898,7 @@ export default class ReactCalendarTimeline<
         selected={this.props.selected}
         scrollRef={this.scrollComponent}
         scrollOffset={scrollOffset}
+        calculateGroupOffset={calculateGroupOffset}
       />
     );
   }
@@ -908,6 +1002,7 @@ export default class ReactCalendarTimeline<
   }
 
   renderHeaders = () => {
+    const headerClassName = this.props.stickyHeader ? "rct-sticky-header" : "";
     if (this.props.children) {
       let headerRenderer;
       React.Children.map(this.props.children, (child) => {
@@ -916,11 +1011,15 @@ export default class ReactCalendarTimeline<
         }
       });
       if (headerRenderer) {
-        return headerRenderer;
+        return React.cloneElement(headerRenderer as React.ReactElement, {
+          className: [(headerRenderer as React.ReactElement).props?.className, headerClassName]
+            .filter(Boolean)
+            .join(" "),
+        });
       }
     }
     return (
-      <TimelineHeaders>
+      <TimelineHeaders className={headerClassName}>
         <DateHeader unit="primaryHeader" />
         <DateHeader />
       </TimelineHeaders>
@@ -946,6 +1045,10 @@ export default class ReactCalendarTimeline<
       this.props.scrollRef(el);
     }
     this.scrollComponent = el;
+  };
+
+  getPinnedLayerRef = (el: HTMLDivElement | null) => {
+    this.pinnedLayerRef = el;
   };
 
   container = React.createRef<HTMLDivElement>();
@@ -977,7 +1080,8 @@ export default class ReactCalendarTimeline<
   };
 
   render() {
-    const { items, groups, sidebarWidth, rightSidebarWidth, timeSteps, traditionalZoom, buffer } = this.props;
+    const { items, groups, sidebarWidth, rightSidebarWidth, timeSteps, traditionalZoom, buffer, pinnedGroups } =
+      this.props;
     const { draggingItem, resizingItem, width, visibleTimeStart, visibleTimeEnd, canvasTimeStart, canvasTimeEnd } =
       this.state;
     const scrollOffset = this.getScrollOffset();
@@ -1014,8 +1118,107 @@ export default class ReactCalendarTimeline<
       groupTops = stackResults.groupTops;
     }
 
+    // --- Pinned Layer Logic ---
+    let pinnedGroupsList: typeof groups = [];
+    let scrollGroupsList: typeof groups = groups;
+    const pinnedGroupHeights: number[] = [];
+    let scrollGroupHeights: number[] = groupHeights;
+    const pinnedDimensionItems: ItemDimension[] = [];
+    let scrollDimensionItems: ItemDimension[] = dimensionItems;
+    let pinnedHeight = 0;
+
+    const hasPinned = pinnedGroups && pinnedGroups.length > 0;
+    if (hasPinned) {
+      // 1. Split groups
+      const pinnedSet = new Set(pinnedGroups.map(String));
+      pinnedGroupsList = [];
+      scrollGroupsList = [];
+      scrollGroupHeights = [];
+      scrollDimensionItems = [];
+
+      const pinnedIndexMap = new Map<number, number>(); // original index -> pinned index
+      const scrollIndexMap = new Map<number, number>(); // original index -> scroll index
+
+      for (let i = 0; i < groups.length; i++) {
+        const g = groups[i];
+        const groupId = String(_get(g, this.props.keys.groupIdKey));
+        const isPinned = pinnedSet.has(groupId);
+        if (isPinned) {
+          pinnedIndexMap.set(i, pinnedGroupsList.length);
+          pinnedGroupsList.push(g);
+          pinnedGroupHeights.push(groupHeights[i]);
+        } else {
+          scrollIndexMap.set(i, scrollGroupsList.length);
+          scrollGroupsList.push(g);
+          scrollGroupHeights.push(groupHeights[i]);
+        }
+      }
+
+      // 2. Split items based on their assigned group index from the original dimensionItems
+      for (const item of dimensionItems) {
+        const origGroupIndex = item.dimensions.order.index;
+        if (pinnedIndexMap.has(origGroupIndex)) {
+          // It's a pinned item. We don't recalculate stacking — just remap its groupIndex
+          pinnedDimensionItems.push(item);
+        } else if (scrollIndexMap.has(origGroupIndex)) {
+          scrollDimensionItems.push(item);
+        }
+      }
+
+      // 3. Compute pinned height
+      pinnedHeight = pinnedGroupHeights.reduce((a, b) => a + b, 0);
+    }
+
+    const calculateGroupOffset = (e: React.MouseEvent, currentOrder: number) => {
+      if (!this.scrollComponent) return 0;
+      const scrollRect = this.scrollComponent.getBoundingClientRect();
+      const clientY = e.clientY;
+
+      if (hasPinned && this.pinnedLayerRef) {
+        const pinnedRect = this.pinnedLayerRef.getBoundingClientRect();
+        const isOverPinned = clientY >= pinnedRect.top && clientY <= pinnedRect.bottom;
+
+        if (isOverPinned) {
+          const yInsidePinned = clientY - pinnedRect.top;
+          let acc = 0;
+          for (let i = 0; i < pinnedGroupHeights.length; i++) {
+            acc += pinnedGroupHeights[i];
+            if (yInsidePinned <= acc) {
+              const globalIndex = groups.indexOf(pinnedGroupsList[i]);
+              return globalIndex - currentOrder;
+            }
+          }
+          return groups.indexOf(pinnedGroupsList[pinnedGroupsList.length - 1]) - currentOrder;
+        }
+      }
+
+      const yInsideScroll = clientY - scrollRect.top + this.scrollComponent.scrollTop;
+      let targetGlobalIndex = -1;
+      for (let i = 0; i < scrollGroupsList.length; i++) {
+        const globalIndex = groups.indexOf(scrollGroupsList[i]);
+        if (globalIndex === -1) continue;
+        const groupTop = groupTops[globalIndex];
+
+        if (yInsideScroll >= groupTop) {
+          targetGlobalIndex = globalIndex;
+        } else {
+          break;
+        }
+      }
+
+      if (targetGlobalIndex !== -1) {
+        return targetGlobalIndex - currentOrder;
+      }
+
+      if (scrollGroupsList.length > 0) {
+        return groups.indexOf(scrollGroupsList[scrollGroupsList.length - 1]) - currentOrder;
+      }
+      return 0;
+    };
+
     const outerComponentStyle = {
-      height: `${height}px`,
+      height: `${height + (hasPinned ? pinnedHeight : 0)}px`,
+      position: "relative" as const,
     };
 
     return (
@@ -1038,50 +1241,171 @@ export default class ReactCalendarTimeline<
             scrollOffset={scrollOffset}
           >
             <div
-              style={this.props.style}
+              style={{ overflowX: "clip", ...this.props.style }}
               ref={this.container}
               className={`react-calendar-timeline ${this.props.className}`}
             >
               {this.renderHeaders()}
               <div style={outerComponentStyle} className="rct-outer">
-                {sidebarWidth > 0 ? this.sidebar(height, groupHeights) : null}
-                <ScrollElement
-                  scrollRef={this.getScrollElementRef}
-                  width={width}
-                  height={height}
-                  onZoom={this.changeZoom}
-                  onWheelZoom={this.handleWheelZoom}
-                  traditionalZoom={!!traditionalZoom}
-                  onScroll={this.onScroll}
-                  scrollOffset={scrollOffset}
-                >
-                  <MarkerCanvas>
-                    {this.columns(canvasTimeStart, canvasTimeEnd, canvasWidth, minUnit, timeSteps, height)}
-                    {this.rows(canvasWidth, groupHeights, groups)}
-                    {this.items({
-                      canvasTimeStart,
-                      canvasTimeEnd,
-                      canvasWidth,
-                      dimensionItems,
-                      groupTops,
-                      scrollOffset,
-                    })}
-                    {this.childrenWithProps(
-                      canvasTimeStart,
-                      canvasTimeEnd,
-                      canvasWidth,
-                      dimensionItems,
-                      groupHeights,
-                      groupTops,
-                      height,
-                      visibleTimeStart,
-                      visibleTimeEnd,
-                      minUnit,
-                      timeSteps
+                {/* --- PINNED LAYER --- */}
+                {hasPinned && (
+                  <div
+                    ref={this.getPinnedLayerRef}
+                    onWheel={this.handlePinnedLayerWheel}
+                    onPointerDown={this.handlePinnedPointerDown}
+                    onPointerMove={this.handlePinnedPointerMove}
+                    onPointerUp={this.handlePinnedPointerUp}
+                    onPointerLeave={this.handlePinnedPointerLeave}
+                    className="rct-pinned-layer"
+                    style={{
+                      position: "sticky",
+                      top: this.getHeaderHeight(),
+                      zIndex: 10,
+                      display: "flex",
+                      backgroundColor: "var(--rct-color-background, #fff)",
+                    }}
+                    data-pinned-count={pinnedGroupsList.length}
+                    data-pinned-height={pinnedHeight}
+                  >
+                    {sidebarWidth > 0 && (
+                      <div
+                        className="rct-sidebar rct-pinned-sidebar"
+                        style={{ width: `${sidebarWidth}px`, height: `${pinnedHeight}px` }}
+                      >
+                        <div style={{ width: `${sidebarWidth}px` }}>
+                          {pinnedGroupsList.map((g, i) => (
+                            <div
+                              key={`p-side-${i}`}
+                              className={`rct-sidebar-row rct-sidebar-row-${i % 2 === 0 ? "even" : "odd"} rct-sidebar-row-pinned`}
+                              style={{ height: `${pinnedGroupHeights[i]}px`, lineHeight: `${pinnedGroupHeights[i]}px` }}
+                            >
+                              {this.props.groupRenderer
+                                ? this.props.groupRenderer({ group: g, isRightSidebar: false })
+                                : (_get(g, this.props.keys.groupTitleKey) as React.ReactNode)}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     )}
-                  </MarkerCanvas>
-                </ScrollElement>
-                {rightSidebarWidth > 0 ? this.rightSidebar(height, groupHeights) : null}
+
+                    <div
+                      className="rct-scroll rct-pinned-scroll"
+                      style={{
+                        width: `${width}px`,
+                        height: `${pinnedHeight}px`,
+                        overflow: "hidden",
+                        position: "relative",
+                      }}
+                    >
+                      <div style={{ transform: `translateX(${-scrollOffset}px)`, height: "100%" }}>
+                        <MarkerCanvas>
+                          {this.columns(canvasTimeStart, canvasTimeEnd, canvasWidth, minUnit, timeSteps, height)}
+                          <div className="rct-horizontal-lines rct-pinned-horizontal-lines">
+                            {pinnedGroupsList.map((_, i) => (
+                              <div
+                                key={`p-row-${i}`}
+                                className={`rct-hl-pinned ${i % 2 === 0 ? "rct-hl-even" : "rct-hl-odd"}`}
+                                style={{ width: `${canvasWidth}px`, height: `${pinnedGroupHeights[i]}px` }}
+                              />
+                            ))}
+                          </div>
+                          {this.items({
+                            canvasTimeStart,
+                            canvasTimeEnd,
+                            canvasWidth,
+                            dimensionItems: pinnedDimensionItems,
+                            groupTops, // items.dimensions.top is absolute, so original groupTops works
+                            scrollOffset,
+                            calculateGroupOffset,
+                          })}
+                        </MarkerCanvas>
+                      </div>
+                    </div>
+
+                    {rightSidebarWidth > 0 && (
+                      <div
+                        className="rct-sidebar rct-pinned-sidebar"
+                        style={{ width: `${rightSidebarWidth}px`, height: `${pinnedHeight}px` }}
+                      >
+                        <div style={{ width: `${rightSidebarWidth}px` }}>
+                          {pinnedGroupsList.map((g, i) => (
+                            <div
+                              key={`p-rside-${i}`}
+                              className={`rct-sidebar-row rct-sidebar-row-${i % 2 === 0 ? "even" : "odd"} rct-sidebar-row-pinned`}
+                              style={{ height: `${pinnedGroupHeights[i]}px`, lineHeight: `${pinnedGroupHeights[i]}px` }}
+                            >
+                              {this.props.groupRenderer
+                                ? this.props.groupRenderer({ group: g, isRightSidebar: true })
+                                : (_get(g, this.props.keys.groupRightTitleKey) as React.ReactNode)}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* --- SCROLL LAYER --- */}
+                <div style={{ display: "flex" }}>
+                  {sidebarWidth > 0 ? this.sidebar(height, scrollGroupHeights) : null}
+                  <ScrollElement
+                    scrollRef={this.getScrollElementRef}
+                    width={width}
+                    height={height}
+                    onZoom={this.changeZoom}
+                    onWheelZoom={this.handleWheelZoom}
+                    traditionalZoom={!!traditionalZoom}
+                    onScroll={this.onScroll}
+                    scrollOffset={scrollOffset}
+                  >
+                    <MarkerCanvas>
+                      {this.columns(canvasTimeStart, canvasTimeEnd, canvasWidth, minUnit, timeSteps, height)}
+
+                      {/* Only render scroll rows */}
+                      <div className="rct-horizontal-lines">
+                        {scrollGroupsList.map((_g, i) => {
+                          const originalMap = hasPinned ? groups.indexOf(_g) : i;
+                          return (
+                            <div
+                              key={`s-row-${i}`}
+                              className={i % 2 === 0 ? "rct-hl-even" : "rct-hl-odd"}
+                              style={{
+                                width: `${canvasWidth}px`,
+                                height: `${scrollGroupHeights[i]}px`,
+                                top: `${groupTops[originalMap]}px`,
+                                position: "absolute",
+                              }}
+                            />
+                          );
+                        })}
+                      </div>
+
+                      {this.items({
+                        canvasTimeStart,
+                        canvasTimeEnd,
+                        canvasWidth,
+                        dimensionItems: scrollDimensionItems,
+                        groupTops,
+                        scrollOffset,
+                        calculateGroupOffset,
+                      })}
+                      {this.childrenWithProps(
+                        canvasTimeStart,
+                        canvasTimeEnd,
+                        canvasWidth,
+                        dimensionItems,
+                        groupHeights,
+                        groupTops,
+                        height,
+                        visibleTimeStart,
+                        visibleTimeEnd,
+                        minUnit,
+                        timeSteps
+                      )}
+                    </MarkerCanvas>
+                  </ScrollElement>
+                  {rightSidebarWidth > 0 ? this.rightSidebar(height, scrollGroupHeights) : null}
+                </div>
               </div>
             </div>
           </TimelineHeadersProvider>

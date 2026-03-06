@@ -80,6 +80,7 @@ export type ItemProps<CustomItem extends TimelineItemBase<number>> = {
   onItemDoubleClick: (i: Id, e: MouseEvent<HTMLDivElement>) => void;
   scrollRef: HTMLElement | null;
   scrollOffset: number;
+  calculateGroupOffset?: (e: MouseEvent, currentOrder: number) => number;
 };
 
 type DragProps = { offset: number; x: number; y: number };
@@ -246,11 +247,17 @@ export default class Item<CustomItem extends TimelineItemBase<number>> extends C
   }
 
   dragGroupDelta(e: MouseEvent) {
-    const { groupTops, order } = this.props;
+    const { groupTops, order, calculateGroupOffset } = this.props;
     if (this.state.dragging) {
       if (!this.props.canChangeGroup) {
         return 0;
       }
+
+      // If the parent Timeline provides a custom group offset calculator (for dual-layer pinned rows)
+      if (calculateGroupOffset) {
+        return calculateGroupOffset(e, order!.index);
+      }
+
       let groupDelta = 0;
 
       const offset = getSumOffset(this.props.scrollRef!).offsetTop;

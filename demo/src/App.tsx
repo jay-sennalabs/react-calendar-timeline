@@ -2,6 +2,7 @@ import { ComponentType } from "react";
 import { createBrowserRouter, Link, RouteObject, RouterProvider } from "react-router-dom";
 
 import DemoMain from "./demo-main";
+import DemoCustomPinned from "./demo-custom-pinned";
 import DemoPerformance from "./demo-performance";
 import DemoTreePGroups from "./demo-tree-groups";
 import LinkedTimelines from "./demo-linked-timelines";
@@ -14,6 +15,8 @@ import CustomInfoLabel from "./demo-custom-info-label";
 import ControledSelect from "./demo-controlled-select";
 import ControlledScrolling from "./demo-controlled-scrolling";
 import ExternalDrop from "./demo-external";
+import DemoRowHeight from "./demo-row-height";
+
 const loader = () => "loading";
 const routes: RouteObject[] = [
   {
@@ -70,6 +73,14 @@ const routes: RouteObject[] = [
     path: "/ExternalDrop",
     Component: withLayout(ExternalDrop),
   },
+  {
+    path: "/CustomPinnedGroups",
+    Component: withLayout(DemoCustomPinned),
+  },
+  {
+    path: "/RowHeight",
+    Component: withLayout(DemoRowHeight),
+  },
 ];
 
 function Menu() {
@@ -90,7 +101,7 @@ function withLayout(Component: ComponentType<any>) {
     return (
       <div>
         <Menu />
-        <div className="demo-demo">
+        <div className="demo-demo" style={{ width: "100%", overflowX: "hidden", overflowY: "visible" }}>
           <Component />
         </div>
       </div>

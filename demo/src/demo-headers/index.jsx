@@ -11,7 +11,8 @@ import Timeline, {
   CustomHeader,
   TimelineHeaders,
   DateHeader,
-} from "react-calendar-timeline";
+} from "../../../src/index";
+import "../../../src/lib/Timeline.scss";
 
 import generateFakeData from "../generate-fake-data";
 
@@ -34,7 +35,7 @@ export default class App extends Component {
   constructor(props) {
     super(props);
 
-    const { groups, items } = generateFakeData();
+    const { groups, items } = generateFakeData(40, 2000, 60);
     const defaultTimeStart = dayjs().startOf("day").toDate();
     const defaultTimeEnd = dayjs().startOf("day").add(1, "day").toDate();
 
