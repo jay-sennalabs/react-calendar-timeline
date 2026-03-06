@@ -1122,10 +1122,13 @@ export default class ReactCalendarTimeline<
     let pinnedGroupsList: typeof groups = [];
     let scrollGroupsList: typeof groups = groups;
     const pinnedGroupHeights: number[] = [];
+    const pinnedGroupTops: number[] = [];
     let scrollGroupHeights: number[] = groupHeights;
+    let scrollGroupTops: number[] = groupTops;
     const pinnedDimensionItems: ItemDimension[] = [];
     let scrollDimensionItems: ItemDimension[] = dimensionItems;
     let pinnedHeight = 0;
+    let scrollHeight = height;
 
     const hasPinned = pinnedGroups && pinnedGroups.length > 0;
     if (hasPinned) {
@@ -1134,10 +1137,16 @@ export default class ReactCalendarTimeline<
       pinnedGroupsList = [];
       scrollGroupsList = [];
       scrollGroupHeights = [];
+      scrollGroupTops = [];
       scrollDimensionItems = [];
 
       const pinnedIndexMap = new Map<number, number>(); // original index -> pinned index
       const scrollIndexMap = new Map<number, number>(); // original index -> scroll index
+      const pinnedTopByGlobalIndex = new Map<number, number>();
+      const scrollTopByGlobalIndex = new Map<number, number>();
+
+      let nextPinnedTop = 0;
+      let nextScrollTop = 0;
 
       for (let i = 0; i < groups.length; i++) {
         const g = groups[i];
@@ -1147,26 +1156,51 @@ export default class ReactCalendarTimeline<
           pinnedIndexMap.set(i, pinnedGroupsList.length);
           pinnedGroupsList.push(g);
           pinnedGroupHeights.push(groupHeights[i]);
+          pinnedGroupTops.push(nextPinnedTop);
+          pinnedTopByGlobalIndex.set(i, nextPinnedTop);
+          nextPinnedTop += groupHeights[i];
         } else {
           scrollIndexMap.set(i, scrollGroupsList.length);
           scrollGroupsList.push(g);
           scrollGroupHeights.push(groupHeights[i]);
+          scrollGroupTops.push(nextScrollTop);
+          scrollTopByGlobalIndex.set(i, nextScrollTop);
+          nextScrollTop += groupHeights[i];
         }
       }
+
+      const remapItemTopForLayer = (item: ItemDimension, layerGroupTop: number, originalGroupTop: number) => {
+        const currentTop = item.dimensions.top;
+        if (currentTop === null) return item;
+        const nextTop = layerGroupTop + (currentTop - originalGroupTop);
+        if (nextTop === currentTop) return item;
+
+        return {
+          ...item,
+          dimensions: {
+            ...item.dimensions,
+            top: nextTop,
+          },
+        };
+      };
 
       // 2. Split items based on their assigned group index from the original dimensionItems
       for (const item of dimensionItems) {
         const origGroupIndex = item.dimensions.order.index;
+        const originalGroupTop = groupTops[origGroupIndex] ?? 0;
+
         if (pinnedIndexMap.has(origGroupIndex)) {
-          // It's a pinned item. We don't recalculate stacking — just remap its groupIndex
-          pinnedDimensionItems.push(item);
+          const layerGroupTop = pinnedTopByGlobalIndex.get(origGroupIndex) ?? 0;
+          pinnedDimensionItems.push(remapItemTopForLayer(item, layerGroupTop, originalGroupTop));
         } else if (scrollIndexMap.has(origGroupIndex)) {
-          scrollDimensionItems.push(item);
+          const layerGroupTop = scrollTopByGlobalIndex.get(origGroupIndex) ?? 0;
+          scrollDimensionItems.push(remapItemTopForLayer(item, layerGroupTop, originalGroupTop));
         }
       }
 
       // 3. Compute pinned height
-      pinnedHeight = pinnedGroupHeights.reduce((a, b) => a + b, 0);
+      pinnedHeight = nextPinnedTop;
+      scrollHeight = nextScrollTop;
     }
 
     const calculateGroupOffset = (e: React.MouseEvent, currentOrder: number) => {
@@ -1197,7 +1231,7 @@ export default class ReactCalendarTimeline<
       for (let i = 0; i < scrollGroupsList.length; i++) {
         const globalIndex = groups.indexOf(scrollGroupsList[i]);
         if (globalIndex === -1) continue;
-        const groupTop = groupTops[globalIndex];
+        const groupTop = scrollGroupTops[i];
 
         if (yInsideScroll >= groupTop) {
           targetGlobalIndex = globalIndex;
@@ -1217,7 +1251,7 @@ export default class ReactCalendarTimeline<
     };
 
     const outerComponentStyle = {
-      height: `${height + (hasPinned ? pinnedHeight : 0)}px`,
+      height: `${scrollHeight + pinnedHeight}px`,
       position: "relative" as const,
     };
 
@@ -1299,13 +1333,17 @@ export default class ReactCalendarTimeline<
                     >
                       <div style={{ transform: `translateX(${-scrollOffset}px)`, height: "100%" }}>
                         <MarkerCanvas>
-                          {this.columns(canvasTimeStart, canvasTimeEnd, canvasWidth, minUnit, timeSteps, height)}
+                          {this.columns(canvasTimeStart, canvasTimeEnd, canvasWidth, minUnit, timeSteps, pinnedHeight)}
                           <div className="rct-horizontal-lines rct-pinned-horizontal-lines">
                             {pinnedGroupsList.map((_, i) => (
                               <div
                                 key={`p-row-${i}`}
                                 className={`rct-hl-pinned ${i % 2 === 0 ? "rct-hl-even" : "rct-hl-odd"}`}
-                                style={{ width: `${canvasWidth}px`, height: `${pinnedGroupHeights[i]}px` }}
+                                style={{
+                                  width: `${canvasWidth}px`,
+                                  height: `${pinnedGroupHeights[i]}px`,
+                                  top: `${pinnedGroupTops[i]}px`,
+                                }}
                               />
                             ))}
                           </div>
@@ -1314,7 +1352,7 @@ export default class ReactCalendarTimeline<
                             canvasTimeEnd,
                             canvasWidth,
                             dimensionItems: pinnedDimensionItems,
-                            groupTops, // items.dimensions.top is absolute, so original groupTops works
+                            groupTops,
                             scrollOffset,
                             calculateGroupOffset,
                           })}
@@ -1347,11 +1385,11 @@ export default class ReactCalendarTimeline<
 
                 {/* --- SCROLL LAYER --- */}
                 <div style={{ display: "flex" }}>
-                  {sidebarWidth > 0 ? this.sidebar(height, scrollGroupHeights, scrollGroupsList) : null}
+                  {sidebarWidth > 0 ? this.sidebar(scrollHeight, scrollGroupHeights, scrollGroupsList) : null}
                   <ScrollElement
                     scrollRef={this.getScrollElementRef}
                     width={width}
-                    height={height}
+                    height={scrollHeight}
                     onZoom={this.changeZoom}
                     onWheelZoom={this.handleWheelZoom}
                     traditionalZoom={!!traditionalZoom}
@@ -1359,12 +1397,11 @@ export default class ReactCalendarTimeline<
                     scrollOffset={scrollOffset}
                   >
                     <MarkerCanvas>
-                      {this.columns(canvasTimeStart, canvasTimeEnd, canvasWidth, minUnit, timeSteps, height)}
+                      {this.columns(canvasTimeStart, canvasTimeEnd, canvasWidth, minUnit, timeSteps, scrollHeight)}
 
                       {/* Only render scroll rows */}
                       <div className="rct-horizontal-lines">
                         {scrollGroupsList.map((_g, i) => {
-                          const originalMap = hasPinned ? groups.indexOf(_g) : i;
                           return (
                             <div
                               key={`s-row-${i}`}
@@ -1372,7 +1409,7 @@ export default class ReactCalendarTimeline<
                               style={{
                                 width: `${canvasWidth}px`,
                                 height: `${scrollGroupHeights[i]}px`,
-                                top: `${groupTops[originalMap]}px`,
+                                top: `${scrollGroupTops[i]}px`,
                                 position: "absolute",
                               }}
                             />
@@ -1396,7 +1433,7 @@ export default class ReactCalendarTimeline<
                         dimensionItems,
                         groupHeights,
                         groupTops,
-                        height,
+                        scrollHeight,
                         visibleTimeStart,
                         visibleTimeEnd,
                         minUnit,
@@ -1404,7 +1441,7 @@ export default class ReactCalendarTimeline<
                       )}
                     </MarkerCanvas>
                   </ScrollElement>
-                  {rightSidebarWidth > 0 ? this.rightSidebar(height, scrollGroupHeights, scrollGroupsList) : null}
+                  {rightSidebarWidth > 0 ? this.rightSidebar(scrollHeight, scrollGroupHeights, scrollGroupsList) : null}
                 </div>
               </div>
             </div>

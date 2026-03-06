@@ -92,7 +92,7 @@ describe("Timeline", () => {
       expect(outerHeight).toBe(scrollHeight + pinnedHeight);
     });
 
-    it("puts overflowX:hidden on react-calendar-timeline wrapper (not .rct-outer) so sticky works inside a scroll container", () => {
+    it("puts overflowX:clip on react-calendar-timeline wrapper (not .rct-outer) so sticky works inside a scroll container", () => {
       const defaultTimeStart = dayjs("2018-01-01").valueOf();
       const defaultTimeEnd = dayjs("2018-03-01").valueOf();
 
@@ -111,9 +111,9 @@ describe("Timeline", () => {
       const wrapper = container.querySelector(".react-calendar-timeline") as HTMLDivElement;
       const outer = container.querySelector(".rct-outer") as HTMLDivElement;
 
-      // overflowX:hidden must be on the outer wrapper, NOT on .rct-outer
+      // overflowX:clip must be on the outer wrapper, NOT on .rct-outer
       // so that position:sticky on .rct-pinned-layer works against the real scroll container
-      expect(wrapper.style.overflowX).toBe("hidden");
+      expect(wrapper.style.overflowX).toBe("clip");
       expect(outer.style.overflowX).toBe("");
     });
 
@@ -137,6 +137,37 @@ describe("Timeline", () => {
 
       const sidebarRows = container.querySelectorAll(".rct-sidebar-row");
       expect(sidebarRows).toHaveLength(props.groups.length);
+    });
+
+    it("compresses scroll layer rows and height after extracting pinned groups", () => {
+      const defaultTimeStart = dayjs("2018-01-01").valueOf();
+      const defaultTimeEnd = dayjs("2018-03-01").valueOf();
+
+      const props = {
+        ...defaultProps,
+        defaultTimeStart,
+        defaultTimeEnd,
+        groups: [
+          { id: 1, title: "Pinned Group" },
+          { id: 2, title: "Group 2" },
+          { id: 3, title: "Group 3" },
+        ],
+        pinnedGroups: [1],
+      };
+
+      const { container, getByTestId } = render(<Timeline {...props} />);
+
+      const scrollElement = getByTestId("scroll-element") as HTMLDivElement;
+      const scrollRows = container.querySelectorAll(
+        ".rct-horizontal-lines:not(.rct-pinned-horizontal-lines) > div"
+      ) as NodeListOf<HTMLDivElement>;
+
+      expect(scrollRows).toHaveLength(2);
+      expect(scrollRows[0].style.top).toBe("0px");
+      expect(scrollRows[1].style.top).toBe(scrollRows[0].style.height);
+
+      const rowsHeight = Array.from(scrollRows).reduce((acc, row) => acc + parseFloat(row.style.height), 0);
+      expect(parseFloat(scrollElement.style.height)).toBe(rowsHeight);
     });
   });
 });
