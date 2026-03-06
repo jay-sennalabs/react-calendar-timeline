@@ -116,5 +116,27 @@ describe("Timeline", () => {
       expect(wrapper.style.overflowX).toBe("hidden");
       expect(outer.style.overflowX).toBe("");
     });
+
+    it("renders pinned groups only once across pinned and scroll sidebars", () => {
+      const defaultTimeStart = dayjs("2018-01-01").valueOf();
+      const defaultTimeEnd = dayjs("2018-03-01").valueOf();
+
+      const props = {
+        ...defaultProps,
+        defaultTimeStart,
+        defaultTimeEnd,
+        groups: [
+          { id: 1, title: "Pinned Group" },
+          { id: 2, title: "Group 2" },
+          { id: 3, title: "Group 3" },
+        ],
+        pinnedGroups: [1],
+      };
+
+      const { container } = render(<Timeline {...props} />);
+
+      const sidebarRows = container.querySelectorAll(".rct-sidebar-row");
+      expect(sidebarRows).toHaveLength(props.groups.length);
+    });
   });
 });

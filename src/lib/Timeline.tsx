@@ -910,12 +910,12 @@ export default class ReactCalendarTimeline<
     }
   };
 
-  sidebar(height: number, groupHeights: number[]) {
+  sidebar(height: number, groupHeights: number[], groups = this.props.groups) {
     const { sidebarWidth } = this.props;
     return (
       sidebarWidth && (
         <Sidebar
-          groups={this.props.groups}
+          groups={groups}
           groupRenderer={this.props.groupRenderer}
           keys={this.props.keys}
           width={sidebarWidth}
@@ -926,12 +926,12 @@ export default class ReactCalendarTimeline<
     );
   }
 
-  rightSidebar(height: number, groupHeights: number[]) {
+  rightSidebar(height: number, groupHeights: number[], groups = this.props.groups) {
     const { rightSidebarWidth } = this.props;
     return (
       rightSidebarWidth && (
         <Sidebar
-          groups={this.props.groups}
+          groups={groups}
           keys={this.props.keys}
           groupRenderer={this.props.groupRenderer}
           isRightSidebar
@@ -1347,7 +1347,7 @@ export default class ReactCalendarTimeline<
 
                 {/* --- SCROLL LAYER --- */}
                 <div style={{ display: "flex" }}>
-                  {sidebarWidth > 0 ? this.sidebar(height, scrollGroupHeights) : null}
+                  {sidebarWidth > 0 ? this.sidebar(height, scrollGroupHeights, scrollGroupsList) : null}
                   <ScrollElement
                     scrollRef={this.getScrollElementRef}
                     width={width}
@@ -1404,7 +1404,7 @@ export default class ReactCalendarTimeline<
                       )}
                     </MarkerCanvas>
                   </ScrollElement>
-                  {rightSidebarWidth > 0 ? this.rightSidebar(height, scrollGroupHeights) : null}
+                  {rightSidebarWidth > 0 ? this.rightSidebar(height, scrollGroupHeights, scrollGroupsList) : null}
                 </div>
               </div>
             </div>
