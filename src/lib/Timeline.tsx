@@ -1193,7 +1193,8 @@ export default class ReactCalendarTimeline<
 
       // 2. Split items based on their assigned group index from the original dimensionItems
       for (const item of dimensionItems) {
-        const origGroupIndex = item.dimensions.order.index;
+        const origGroupIndex = item.dimensions?.order?.index;
+        if (origGroupIndex == null) continue;
         const originalGroupTop = groupTops[origGroupIndex] ?? 0;
 
         if (pinnedIndexMap.has(origGroupIndex)) {

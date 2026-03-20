@@ -1,4 +1,5 @@
-import { fireEvent, render } from "@testing-library/react";
+import React from "react";
+import { act, fireEvent, render } from "@testing-library/react";
 import dayjs from "dayjs";
 import Timeline from "lib/Timeline";
 import type { ReactCalendarTimelineProps } from "lib/Timeline";
@@ -168,6 +169,57 @@ describe("Timeline", () => {
 
       const rowsHeight = Array.from(scrollRows).reduce((acc, row) => acc + parseFloat(row.style.height), 0);
       expect(parseFloat(scrollElement.style.height)).toBe(rowsHeight);
+    });
+
+    it("does not crash in pinned mode when a dimension item has no order", () => {
+      const defaultTimeStart = dayjs("2018-01-01").valueOf();
+      const defaultTimeEnd = dayjs("2018-03-01").valueOf();
+      const timelineRef = React.createRef<Timeline>();
+
+      const props = {
+        ...defaultProps,
+        defaultTimeStart,
+        defaultTimeEnd,
+        groups: [
+          { id: 1, title: "Pinned Group" },
+          { id: 2, title: "Group 2" },
+        ],
+        items: [
+          {
+            id: 1,
+            group: 1,
+            title: "Item 1",
+            start_time: defaultTimeStart,
+            end_time: defaultTimeStart + 60 * 60 * 1000,
+          },
+        ],
+        pinnedGroups: [1],
+      };
+
+      render(<Timeline {...props} ref={timelineRef} />);
+
+      const originalState = timelineRef.current?.state;
+      const originalItem = originalState?.dimensionItems[0];
+      expect(originalItem).toBeDefined();
+      if (!originalItem) {
+        throw new Error("Expected a dimension item for setup");
+      }
+
+      const malformedItem = {
+        ...originalItem,
+        dimensions: {
+          ...originalItem.dimensions,
+          order: undefined as never,
+        },
+      };
+
+      expect(() => {
+        act(() => {
+          timelineRef.current?.setState({
+            dimensionItems: [malformedItem],
+          });
+        });
+      }).not.toThrow();
     });
 
     it("calls onCanvasClick when clicking an empty timeline row", () => {
